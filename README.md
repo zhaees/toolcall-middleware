@@ -23,19 +23,87 @@ toolcall-middleware (:1435)
 
 **Smart fallback** — kalau upstream lo udah support tool calling, proxy cuma passthrough. Emulasi cuma aktif kalau dibutuhin.
 
-## Quick start
+---
 
+## Install Bun
+
+Proxy ini pake [Bun](https://bun.sh) runtime. Install dulu sesuai OS:
+
+**Linux / macOS / WSL:**
 ```bash
 curl -fsSL https://bun.sh/install | bash
+```
 
+**Windows (PowerShell):**
+```powershell
+powershell -c "irm bun.sh/install.ps1 | iex"
+```
+
+**Windows (npm):**
+```
+npm install -g bun
+```
+
+**Windows (Scoop):**
+```
+scoop install bun
+```
+
+> Kalau di Windows dapet error `unzip is required`, pake cara PowerShell atau npm di atas.
+
+---
+
+## Quick start
+
+### 1. Clone repo
+
+```bash
 git clone https://github.com/zhaees/toolcall-middleware.git
 cd toolcall-middleware
+```
 
+### 2. Setup config
+
+```bash
 cp .env.example .env
-# edit .env — isi UPSTREAM_URL dan UPSTREAM_KEY lo
+```
 
+Edit file `.env`:
+
+```env
+UPSTREAM_URL=http://127.0.0.1:8080/v1
+UPSTREAM_KEY=api-key-lo-disini
+PORT=1435
+```
+
+- `UPSTREAM_URL` → endpoint API yang mau lo tambahin tool calling
+- `UPSTREAM_KEY` → API key buat endpoint itu (kosong kalau ga perlu)
+- `PORT` → port proxy (default 1435)
+
+### 3. Jalanin
+
+```bash
 bun run proxy.ts
 ```
+
+Kalau berhasil bakal muncul:
+
+```
+  toolcall-middleware v1.0.0
+  → http://127.0.0.1:1435
+  → upstream: http://127.0.0.1:8080/v1
+  → mode: native-first, fallback emulation
+```
+
+### 4. Test
+
+```bash
+curl http://127.0.0.1:1435/health
+```
+
+Harusnya return `{"status":"ok"}`.
+
+---
 
 ## Environment variables
 
@@ -46,7 +114,11 @@ bun run proxy.ts
 | `PORT` | `1435` | Port proxy |
 | `HOST` | `127.0.0.1` | Bind address |
 
-## Pake di OpenCode
+---
+
+## Contoh integrasi
+
+### OpenCode
 
 ```jsonc
 // ~/.config/opencode/opencode.json
@@ -68,7 +140,7 @@ bun run proxy.ts
 }
 ```
 
-## Pake di Hermes
+### Hermes
 
 ```yaml
 # ~/.hermes/config.yaml
@@ -78,7 +150,13 @@ model:
   base_url: http://localhost:1435/v1
 ```
 
-## Test pake curl
+### Agentic app lain
+
+Tinggal arahin `base_url` ke `http://127.0.0.1:1435/v1` — format request/response sama persis kayak OpenAI API.
+
+---
+
+## Test tool calling pake curl
 
 ```bash
 curl -X POST http://127.0.0.1:1435/v1/chat/completions \
@@ -123,14 +201,26 @@ Response bakal ada `tool_calls` yang proper:
 }
 ```
 
+---
+
 ## Jalanin di background
 
+**Linux / macOS / WSL:**
 ```bash
 nohup bun run proxy.ts > /tmp/toolcall-proxy.log 2>&1 &
+```
 
-# auto-start pas buka terminal
+**Auto-start pas buka terminal:**
+```bash
 echo 'cd ~/toolcall-middleware && bun run proxy.ts &' >> ~/.bashrc
 ```
+
+**Windows (PowerShell):**
+```powershell
+Start-Process -NoNewWindow bun -ArgumentList "run","proxy.ts" -WorkingDirectory "$HOME\toolcall-middleware"
+```
+
+---
 
 ## Tested
 

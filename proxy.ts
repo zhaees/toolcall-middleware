@@ -1,6 +1,4 @@
 #!/usr/bin/env bun
-import { handleChatGPTRequest, handleChatGPTSessionRequest, isChatGPTModel, getChatGPTModelObjects, getSessionCount } from "./chatgpt-provider";
-
 const UPSTREAM = process.env.UPSTREAM_URL || "http://127.0.0.1:8080/v1";
 const UPSTREAM_KEY = process.env.UPSTREAM_KEY || "";
 const PORT = parseInt(process.env.PORT || "1435");
@@ -137,70 +135,7 @@ function sseFromText(response: any): Response {
   );
 }
 
-// ── ChatGPT tool call emulation (same as upstream, but via ChatGPT provider) ──
-async function handleChatGPTWithTools(body: any): Promise<Response> {
-  const hasTools = body.tools?.length > 0;
-  const wantStream = body.stream === true;
-
-  if (!hasTools) {
-    return handleChatGPTRequest(body);
-  }
-
-  console.log(`[~] ${body.model} → session-based tool emulation (${body.tools.length} tools)`);
-
-  // Extract system prompt
-  const messages = [...(body.messages || [])];
-  const sysIdx = messages.findIndex((m: any) => m.role === "system");
-  const systemPrompt = sysIdx >= 0 ? messages[sysIdx].content : "";
-
-  // Remove system message from messages (it goes into session setup)
-  const nonSystemMessages = messages.filter((m: any) => m.role !== "system");
-
-  if (body.tool_choice === "required") {
-    nonSystemMessages.push({ role: "user", content: "[SYSTEM: You MUST use at least one tool. Output <tool_call> blocks only.]" });
-  } else if (body.tool_choice?.function) {
-    nonSystemMessages.push({ role: "user", content: `[SYSTEM: You MUST call the "${body.tool_choice.function.name}" tool now.]` });
-  }
-
-  // Use session-based flow
-  const sessionBody = {
-    ...body,
-    messages: nonSystemMessages,
-    _tools: body.tools,
-    _systemPrompt: systemPrompt,
-    stream: false,
-  };
-  delete sessionBody.tools;
-  delete sessionBody.tool_choice;
-
-  const emRes = await handleChatGPTSessionRequest(sessionBody);
-  if (!emRes.ok) return emRes;
-
-  const emResult = await emRes.json() as any;
-  const emContent = emResult.choices?.[0]?.message?.content || "";
-  const parsed = parseToolCalls(emContent);
-
-  if (parsed?.toolCalls.length) {
-    console.log(`[✓] ${body.model} → emulated ${parsed.toolCalls.length} tool call(s) via ChatGPT session`);
-    const response = {
-      ...emResult,
-      choices: [{
-        ...emResult.choices[0],
-        finish_reason: "tool_calls",
-        message: { role: "assistant", content: parsed.textContent || null, tool_calls: parsed.toolCalls },
-      }],
-    };
-    if (wantStream) return sseFromToolCalls(response);
-    return Response.json(response);
-  }
-
-  console.log(`[!] ${body.model} → no tool calls detected, returning text`);
-  if (wantStream) return sseFromText(emResult);
-  return Response.json(emResult);
-}
-
-// ── Upstream handler (original logic) ──
-async function handleUpstreamChat(req: Request): Promise<Response> {
+async function handleChat(req: Request): Promise<Response> {
   const body = await req.json();
   const hasTools = body.tools?.length > 0;
   const wantStream = body.stream === true;
@@ -285,26 +220,6 @@ async function handleUpstreamChat(req: Request): Promise<Response> {
   return Response.json(emResult);
 }
 
-// ── Main router ──
-async function handleChat(req: Request): Promise<Response> {
-  const body = await req.json();
-  const model = body.model || "";
-
-  // Route to ChatGPT provider if model matches
-  if (isChatGPTModel(model)) {
-    return handleChatGPTWithTools(body);
-  }
-
-  // Otherwise, use upstream (original behavior)
-  // Re-create request since we consumed the body
-  const newReq = new Request(req.url, {
-    method: req.method,
-    headers: req.headers,
-    body: JSON.stringify(body),
-  });
-  return handleUpstreamChat(newReq);
-}
-
 const server = Bun.serve({
   port: PORT,
   hostname: process.env.HOST || "127.0.0.1",
@@ -321,41 +236,8 @@ const server = Bun.serve({
     try {
       if (path === "/v1/chat/completions" && req.method === "POST") return handleChat(req);
 
-      // ── /v1/models — merge upstream + ChatGPT models ──
-      if (path === "/v1/models" && req.method === "GET") {
-        const chatgptModels = getChatGPTModelObjects();
-        let upstreamModels: any[] = [];
-
-        try {
-          const upRes = await fetch(`${UPSTREAM}/models`, { headers: upstreamHeaders() });
-          if (upRes.ok) {
-            const upData = await upRes.json() as any;
-            upstreamModels = upData.data || upData.models || [];
-          }
-        } catch {
-          // upstream might not be available
-        }
-
-        return Response.json({
-          object: "list",
-          data: [...upstreamModels, ...chatgptModels],
-        });
-      }
-
       if (path === "/health" || path === "/") {
-        const hasChatGPT = !!process.env.CHATGPT_COOKIES;
-        return Response.json({
-          status: "ok",
-          proxy: "toolcall-middleware",
-          version: "3.0.0",
-          port: PORT,
-          upstream: UPSTREAM,
-          providers: {
-            upstream: { enabled: true, url: UPSTREAM },
-            chatgpt: { enabled: hasChatGPT, models: hasChatGPT ? getChatGPTModelObjects().map(m => m.id) : [] },
-          },
-          sessions: { active: getSessionCount() },
-        });
+        return Response.json({ status: "ok", proxy: "toolcall-middleware", port: PORT, upstream: UPSTREAM });
       }
 
       return fetch(`${UPSTREAM}${path}`, { method: req.method, headers: upstreamHeaders(), body: req.method !== "GET" ? await req.text() : undefined });
@@ -366,14 +248,7 @@ const server = Bun.serve({
   },
 });
 
-const hasChatGPT = !!process.env.CHATGPT_COOKIES;
-console.log(`\n  toolcall-middleware v3.0.0`);
+console.log(`\n  toolcall-middleware v1.0.0`);
 console.log(`  → http://127.0.0.1:${PORT}`);
 console.log(`  → upstream: ${UPSTREAM}`);
-console.log(`  → chatgpt: ${hasChatGPT ? "✓ enabled" : "✗ disabled (no CHATGPT_COOKIES)"}`);
-console.log(`  → mode: session-reuse, compressed tools\n`);
-if (hasChatGPT) {
-  console.log(`  ChatGPT models:`);
-  getChatGPTModelObjects().forEach(m => console.log(`    • ${m.id}`));
-  console.log();
-}
+console.log(`  → mode: native-first, fallback emulation\n`);

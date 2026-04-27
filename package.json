@@ -1,11 +1,9 @@
 {
   "name": "toolcall-middleware",
-  "version": "2.1.0",
-  "description": "Add tool calling to any OpenAI-compatible API + ChatGPT web proxy (fetch-based, no Playwright)",
+  "version": "1.0.0",
+  "description": "Add tool calling to any OpenAI-compatible API that doesn't support it",
   "scripts": {
-    "start": "bash start.sh",
-    "proxy": "bun run proxy.ts",
-    "helper": "python3 chatgpt-http-helper.py",
+    "start": "bun run proxy.ts",
     "dev": "bun --watch run proxy.ts"
   },
   "devDependencies": {

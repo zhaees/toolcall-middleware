@@ -1,0 +1,12 @@
+{
+  "name": "toolcall-middleware",
+  "version": "1.0.0",
+  "description": "Add tool calling to any OpenAI-compatible API that doesn't support it",
+  "scripts": {
+    "start": "bun run proxy.ts",
+    "dev": "bun --watch run proxy.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

@@ -1,56 +1,52 @@
 # toolcall-middleware
 
-Drop-in proxy that adds **tool calling** (function calling) to any OpenAI-compatible API that doesn't support it natively.
+Proxy kecil yang nambahin **tool calling** ke API OpenAI-compatible yang ga support natively.
 
-Works with YepAPI, LiteLLM, Ollama, LM Studio, or any `/v1/chat/completions` endpoint.
+Cocok buat YepAPI, Ollama, LM Studio, atau endpoint `/v1/chat/completions` manapun.
 
-## How it works
+## Cara kerja
 
 ```
-Your App / Agent
+App / Agent kamu
        ↓
 toolcall-middleware (:1435)
        ↓
-  has tools in request?
-  ├─ NO  → passthrough (zero overhead)
-  └─ YES → send to upstream
-       ├─ upstream returned tool_calls? → forward as-is
-       └─ no tool_calls? → retry with emulation:
-            1. inject tool definitions into system prompt
-            2. model outputs <tool_call> XML blocks
-            3. proxy parses and converts to OpenAI tool_calls format
+  ada tools di request?
+  ├─ TIDAK → passthrough langsung (zero overhead)
+  └─ IYA  → kirim ke upstream
+       ├─ upstream return tool_calls? → forward apa adanya
+       └─ ga ada tool_calls? → retry pake emulasi:
+            1. inject definisi tools ke system prompt
+            2. model output <tool_call> XML blocks
+            3. proxy parse dan convert ke format OpenAI tool_calls
 ```
 
-**Smart fallback** — if your upstream already supports tool calling (e.g. OpenAI, Anthropic), the proxy just passes through. Only kicks in when needed.
+**Smart fallback** — kalau upstream lo udah support tool calling, proxy cuma passthrough. Emulasi cuma aktif kalau dibutuhin.
 
 ## Quick start
 
 ```bash
-# install bun if you don't have it
 curl -fsSL https://bun.sh/install | bash
 
-# clone
-git clone https://github.com/YOUR_USER/toolcall-middleware.git
+git clone https://github.com/zhaees/toolcall-middleware.git
 cd toolcall-middleware
 
-# configure
 cp .env.example .env
-# edit .env with your upstream URL and API key
+# edit .env — isi UPSTREAM_URL dan UPSTREAM_KEY lo
 
-# run
 bun run proxy.ts
 ```
 
 ## Environment variables
 
-| Variable | Default | Description |
+| Variable | Default | Keterangan |
 |---|---|---|
-| `UPSTREAM_URL` | `http://127.0.0.1:8080/v1` | Your OpenAI-compatible API endpoint |
-| `UPSTREAM_KEY` | _(empty)_ | API key for upstream (sent as `Bearer` token) |
-| `PORT` | `1435` | Port for the proxy |
+| `UPSTREAM_URL` | `http://127.0.0.1:8080/v1` | Endpoint API lo |
+| `UPSTREAM_KEY` | _(kosong)_ | API key upstream (dikirim sebagai `Bearer` token) |
+| `PORT` | `1435` | Port proxy |
 | `HOST` | `127.0.0.1` | Bind address |
 
-## Usage with OpenCode
+## Pake di OpenCode
 
 ```jsonc
 // ~/.config/opencode/opencode.json
@@ -72,7 +68,7 @@ bun run proxy.ts
 }
 ```
 
-## Usage with Hermes
+## Pake di Hermes
 
 ```yaml
 # ~/.hermes/config.yaml
@@ -82,19 +78,19 @@ model:
   base_url: http://localhost:1435/v1
 ```
 
-## Usage with curl
+## Test pake curl
 
 ```bash
 curl -X POST http://127.0.0.1:1435/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "any-model",
-    "messages": [{"role": "user", "content": "Read /etc/hostname"}],
+    "messages": [{"role":"user","content":"Baca file /etc/hostname"}],
     "tools": [{
       "type": "function",
       "function": {
         "name": "read_file",
-        "description": "Read a file",
+        "description": "Baca file dari disk",
         "parameters": {
           "type": "object",
           "properties": {"path": {"type": "string"}},
@@ -106,7 +102,7 @@ curl -X POST http://127.0.0.1:1435/v1/chat/completions \
   }'
 ```
 
-Response will contain proper `tool_calls`:
+Response bakal ada `tool_calls` yang proper:
 
 ```json
 {
@@ -127,22 +123,20 @@ Response will contain proper `tool_calls`:
 }
 ```
 
-## Run as background service
+## Jalanin di background
 
 ```bash
-# simple
 nohup bun run proxy.ts > /tmp/toolcall-proxy.log 2>&1 &
 
-# or add to ~/.bashrc for auto-start
+# auto-start pas buka terminal
 echo 'cd ~/toolcall-middleware && bun run proxy.ts &' >> ~/.bashrc
 ```
 
-## Tested with
+## Tested
 
-- [YepAPI](https://yepapi.com) — no native tool calling
-- [OpenCode](https://opencode.ai) — agentic coding
-- [Hermes](https://github.com/hermes-ai) — AI agent
-- Any OpenAI-compatible endpoint that strips `tools` from requests
+- [YepAPI](https://yepapi.com)
+- [OpenCode](https://opencode.ai)
+- [Hermes](https://github.com/hermes-ai)
 
 ## License
 
